@@ -186,6 +186,33 @@ jobs:
           cp _ngspice_configure.ac ngspice/configure.ac
           cp _icu_mh-linux icu/source/config/mh-linux
 
+      # ── 7b. Boost-for-Android'ın beklediği boost tarball'ını önceden indir ──
+      # (Submodül kendi build script'inde SourceForge'dan indiriyor, o URL güvenilmez)
+      - name: Pre-download boost_1_84_0.tar.bz2 for Boost-for-Android
+        run: |
+          BOOST_FILE="Boost-for-Android/boost_1_84_0.tar.bz2"
+          if [ ! -f "$BOOST_FILE" ]; then
+            echo "Downloading boost 1.84.0 tarball..."
+            # Birincil: boostorg JFrog
+            curl -fsSL --retry 3 --retry-delay 5 \
+              -o "$BOOST_FILE" \
+              'https://boostorg.jfrog.io/artifactory/main/release/1.84.0/source/boost_1_84_0.tar.bz2' || \
+            # Yedek: GitHub Releases
+            curl -fsSL --retry 3 --retry-delay 5 \
+              -o "$BOOST_FILE" \
+              'https://archives.boost.io/release/1.84.0/source/boost_1_84_0.tar.bz2'
+
+            SIZE=$(stat -c%s "$BOOST_FILE")
+            echo "Downloaded: $SIZE bytes"
+            if [ "$SIZE" -lt 1000000 ]; then
+              echo "ERROR: boost tarball too small ($SIZE bytes)!"
+              exit 1
+            fi
+            echo "Boost pre-download OK."
+          else
+            echo "Boost tarball already present."
+          fi
+
       # ── 8. Build! ─────────────────────────────────────────────────────────
       - name: Build KiCad for Android
         run: |
