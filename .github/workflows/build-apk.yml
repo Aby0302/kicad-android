@@ -1,14 +1,14 @@
 name: Build KiCad Android APK
 
 on:
-  workflow_dispatch:          # Manuel tetikleme (Actions sekmesinden "Run workflow")
+  workflow_dispatch:
   push:
     branches: [ actions ]
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 360       # 6 saat — derleme uzun sürer
+    timeout-minutes: 360
 
     env:
       ANDROID_NDK_VERSION: r25c
@@ -43,7 +43,8 @@ jobs:
             git curl wget unzip \
             libgl1-mesa-dev libgles2-mesa-dev \
             libegl1-mesa-dev libx11-dev \
-            autoconf automake libtool
+            autoconf automake libtool \
+            protobuf-compiler
 
           # Meson 1.3.0 — repo zorunluluğu
           pip3 install meson==1.3.0 --break-system-packages || pip3 install meson==1.3.0
@@ -189,8 +190,6 @@ jobs:
           cp _icu_mh-linux icu/source/config/mh-linux
 
       # ── 7b. Boost-for-Android'ın beklediği boost_1_84_0.tar.bz2'yi hazırla ──
-      # SourceForge/mirror'lar GitHub Actions'dan HTML hata sayfası döndürüyor.
-      # Çözüm: boost'u GitHub'dan klonla ve tarball oluştur (github.com her zaman erişilebilir).
       - name: Prepare boost_1_84_0.tar.bz2 for Boost-for-Android
         run: |
           BOOST_FILE="${GITHUB_WORKSPACE}/Boost-for-Android/boost_1_84_0.tar.bz2"
@@ -225,7 +224,6 @@ jobs:
           fi
 
           # 4. Son çare: GitHub'dan git clone + tarball oluştur
-          # (Tüm mirror'lar başarısız olursa bu kesinlikle çalışır)
           if [ "${SIZE:-0}" -lt "$MIN_SIZE" ]; then
             echo "==> Attempt 4: git clone from GitHub (fallback)"
             git clone --recurse-submodules --depth=1 \
@@ -297,7 +295,7 @@ jobs:
           ./all.sh
         timeout-minutes: 300
 
-      # ── 9. APK bul ve artifact olarak yükle ──────────────────────────────
+      # ── 10. APK bul ve artifact olarak yükle ─────────────────────────────
       - name: Find APK files
         run: |
           find . -name "*.apk" 2>/dev/null
