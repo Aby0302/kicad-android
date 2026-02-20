@@ -186,32 +186,66 @@ jobs:
           cp _ngspice_configure.ac ngspice/configure.ac
           cp _icu_mh-linux icu/source/config/mh-linux
 
-      # ── 7b. Boost-for-Android'ın beklediği boost tarball'ını önceden indir ──
-      # (Submodül kendi build script'inde SourceForge'dan indiriyor, o URL güvenilmez)
-      - name: Pre-download boost_1_84_0.tar.bz2 for Boost-for-Android
+      # ── 7b. Boost-for-Android'ın beklediği boost_1_84_0.tar.bz2'yi hazırla ──
+      # SourceForge/mirror'lar GitHub Actions'dan HTML hata sayfası döndürüyor.
+      # Çözüm: boost'u GitHub'dan klonla ve tarball oluştur (github.com her zaman erişilebilir).
+      - name: Prepare boost_1_84_0.tar.bz2 for Boost-for-Android
         run: |
-          BOOST_FILE="Boost-for-Android/boost_1_84_0.tar.bz2"
-          if [ ! -f "$BOOST_FILE" ]; then
-            echo "Downloading boost 1.84.0 tarball..."
-            # Birincil: boostorg JFrog
-            curl -fsSL --retry 3 --retry-delay 5 \
-              -o "$BOOST_FILE" \
-              'https://boostorg.jfrog.io/artifactory/main/release/1.84.0/source/boost_1_84_0.tar.bz2' || \
-            # Yedek: GitHub Releases
-            curl -fsSL --retry 3 --retry-delay 5 \
-              -o "$BOOST_FILE" \
-              'https://archives.boost.io/release/1.84.0/source/boost_1_84_0.tar.bz2'
+          BOOST_FILE="${GITHUB_WORKSPACE}/Boost-for-Android/boost_1_84_0.tar.bz2"
+          MIN_SIZE=50000000   # 50 MB — gerçek tarball en az bu kadar
 
-            SIZE=$(stat -c%s "$BOOST_FILE")
-            echo "Downloaded: $SIZE bytes"
-            if [ "$SIZE" -lt 1000000 ]; then
-              echo "ERROR: boost tarball too small ($SIZE bytes)!"
-              exit 1
-            fi
-            echo "Boost pre-download OK."
-          else
-            echo "Boost tarball already present."
+          # 1. Deneme: GitHub Releases doğrudan bağlantı
+          echo "==> Attempt 1: GitHub Releases"
+          curl -fsSL -L --retry 3 --retry-delay 5 \
+            -o "${BOOST_FILE}" \
+            "https://github.com/boostorg/boost/releases/download/boost-1.84.0/boost_1_84_0.tar.bz2" \
+            && SIZE=$(stat -c%s "${BOOST_FILE}") && echo "Size: $SIZE" \
+            || SIZE=0
+
+          # 2. Deneme: archives.boost.io (redirektsiz CDN)
+          if [ "${SIZE:-0}" -lt "$MIN_SIZE" ]; then
+            echo "==> Attempt 2: archives.boost.io"
+            curl -fsSL -L --retry 3 --retry-delay 5 \
+              -o "${BOOST_FILE}" \
+              "https://archives.boost.io/release/1.84.0/source/boost_1_84_0.tar.bz2" \
+              && SIZE=$(stat -c%s "${BOOST_FILE}") && echo "Size: $SIZE" \
+              || SIZE=0
           fi
+
+          # 3. Deneme: boostorg JFrog Artifactory
+          if [ "${SIZE:-0}" -lt "$MIN_SIZE" ]; then
+            echo "==> Attempt 3: JFrog Artifactory"
+            curl -fsSL -L --retry 3 --retry-delay 5 \
+              -o "${BOOST_FILE}" \
+              "https://boostorg.jfrog.io/artifactory/main/release/1.84.0/source/boost_1_84_0.tar.bz2" \
+              && SIZE=$(stat -c%s "${BOOST_FILE}") && echo "Size: $SIZE" \
+              || SIZE=0
+          fi
+
+          # 4. Son çare: GitHub'dan git clone + tarball oluştur
+          # (Tüm mirror'lar başarısız olursa bu kesinlikle çalışır)
+          if [ "${SIZE:-0}" -lt "$MIN_SIZE" ]; then
+            echo "==> Attempt 4: git clone from GitHub (fallback)"
+            git clone --recurse-submodules --depth=1 \
+              --branch boost-1.84.0 \
+              https://github.com/boostorg/boost.git \
+              /tmp/boost_1_84_0
+            echo "Packing tarball..."
+            cd /tmp
+            tar cjf "${BOOST_FILE}" boost_1_84_0/
+            rm -rf /tmp/boost_1_84_0
+            SIZE=$(stat -c%s "${BOOST_FILE}")
+            echo "Size after packing: $SIZE"
+          fi
+
+          # Final kontrol
+          SIZE=$(stat -c%s "${BOOST_FILE}")
+          echo "Final boost tarball size: $SIZE bytes"
+          if [ "$SIZE" -lt "$MIN_SIZE" ]; then
+            echo "ERROR: All boost download attempts failed! ($SIZE bytes)"
+            exit 1
+          fi
+          echo "=== Boost tarball ready ==="
 
       # ── 8. Build! ─────────────────────────────────────────────────────────
       - name: Build KiCad for Android
