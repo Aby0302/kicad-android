@@ -108,53 +108,75 @@ jobs:
       # ── 6. Kaynak tarballs indir ──────────────────────────────────────────
       - name: Download source tarballs
         run: |
-          mkdir -p OCCT && curl -L -o - \
-            'https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/V7_8_1.tar.gz' \
-            | tar -xz --strip-components=1 -C OCCT
+          # Yardımcı fonksiyon: önce dosyaya indir, sonra çıkart (pipe'dan daha güvenilir)
+          dl() {
+            local DIR="$1" URL="$2" OUT="/tmp/$(basename $DIR).tar.gz"
+            mkdir -p "$DIR"
+            echo ">>> Downloading $DIR from $URL"
+            curl -fsSL --retry 3 --retry-delay 5 -o "$OUT" "$URL"
+            # Boyut kontrolü: 10KB'dan küçükse hata
+            local SIZE=$(stat -c%s "$OUT")
+            if [ "$SIZE" -lt 10240 ]; then
+              echo "ERROR: $DIR archive too small ($SIZE bytes) - probably an error page!"
+              cat "$OUT"
+              exit 1
+            fi
+            tar -xz --strip-components=1 -C "$DIR" -f "$OUT"
+            rm -f "$OUT"
+            echo "<<< OK: $DIR"
+          }
 
-          mkdir -p libgit2 && curl -L -o - \
-            'https://codeload.github.com/libgit2/libgit2/tar.gz/refs/tags/v1.8.0' \
-            | tar -xz --strip-components=1 -C libgit2
+          dl OCCT \
+            'https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/V7_8_1.tar.gz'
 
-          mkdir -p ngspice && curl -L -o - \
-            'https://altushost-swe.dl.sourceforge.net/project/ngspice/ng-spice-rework/42/ngspice-42.tar.gz' \
-            | tar -xz --strip-components=1 -C ngspice
+          dl libgit2 \
+            'https://github.com/libgit2/libgit2/archive/refs/tags/v1.8.0.tar.gz'
 
-          mkdir -p cairo && curl -L -o - \
-            'https://gitlab.freedesktop.org/cairo/cairo/-/archive/02754405330989198548d1945b3c55566ba0c6b7/cairo-02754405330989198548d1945b3c55566ba0c6b7.tar.gz' \
-            | tar -xz --strip-components=1 -C cairo
+          # ngspice — SourceForge güvenilmez, GitHub mirror kullan
+          dl ngspice \
+            'https://github.com/imr/ngspice/archive/refs/tags/ngspice-42.tar.gz' || \
+          dl ngspice \
+            'https://sourceforge.net/projects/ngspice/files/ng-spice-rework/42/ngspice-42.tar.gz/download'
 
-          mkdir -p unixODBC && curl -L -o - \
-            'https://ftp.unixodbc.org/pub/unixODBC/unixODBC-2.3.12.tar.gz' \
-            | tar -xz --strip-components=1 -C unixODBC
+          dl cairo \
+            'https://gitlab.freedesktop.org/cairo/cairo/-/archive/02754405330989198548d1945b3c55566ba0c6b7/cairo-02754405330989198548d1945b3c55566ba0c6b7.tar.gz'
 
-          mkdir -p zstd && curl -L -o - \
-            'https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-1.5.6.tar.gz' \
-            | tar -xz --strip-components=1 -C zstd
+          # unixODBC — FTP yerine HTTP mirror
+          dl unixODBC \
+            'https://www.unixodbc.org/unixODBC-2.3.12.tar.gz' || \
+          dl unixODBC \
+            'http://www.unixodbc.org/unixODBC-2.3.12.tar.gz'
 
-          mkdir -p protobuf && curl -L -o - \
-            'https://github.com/protocolbuffers/protobuf/archive/refs/tags/v3.12.4.tar.gz' \
-            | tar -xz --strip-components=1 -C protobuf
+          dl zstd \
+            'https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-1.5.6.tar.gz'
 
-          mkdir -p python && curl -L -o - \
-            'https://www.python.org/ftp/python/3.13.0/Python-3.13.0rc1.tgz' \
-            | tar -xz --strip-components=1 -C python
+          dl protobuf \
+            'https://github.com/protocolbuffers/protobuf/archive/refs/tags/v3.12.4.tar.gz'
 
-          mkdir -p openssl && curl -L -o - \
-            'https://github.com/openssl/openssl/releases/download/openssl-3.3.1/openssl-3.3.1.tar.gz' \
-            | tar -xz --strip-components=1 -C openssl
+          # Python — .tgz uzantısı, çıkart parametresi aynı
+          mkdir -p python
+          curl -fsSL --retry 3 -o /tmp/python.tgz \
+            'https://www.python.org/ftp/python/3.13.0/Python-3.13.0rc1.tgz'
+          tar -xz --strip-components=1 -C python -f /tmp/python.tgz
+          rm -f /tmp/python.tgz
 
-          mkdir -p icu && curl -L -o - \
-            'https://github.com/unicode-org/icu/releases/download/release-73-2/icu4c-73_2-src.tgz' \
-            | tar -xz --strip-components=1 -C icu
+          dl openssl \
+            'https://github.com/openssl/openssl/releases/download/openssl-3.3.1/openssl-3.3.1.tar.gz'
 
-          mkdir -p pcre2 && curl -L -o - \
-            'https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.44/pcre2-10.44.tar.gz' \
-            | tar -xz --strip-components=1 -C pcre2
+          # ICU — .tgz uzantısı
+          mkdir -p icu
+          curl -fsSL --retry 3 -o /tmp/icu.tgz \
+            'https://github.com/unicode-org/icu/releases/download/release-73-2/icu4c-73_2-src.tgz'
+          tar -xz --strip-components=1 -C icu -f /tmp/icu.tgz
+          rm -f /tmp/icu.tgz
 
-          mkdir -p boost && curl -L -o - \
-            'https://github.com/boostorg/boost/releases/download/boost-1.85.0/boost-1.85.0-cmake.tar.gz' \
-            | tar -xz --strip-components=1 -C boost
+          dl pcre2 \
+            'https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.44/pcre2-10.44.tar.gz'
+
+          dl boost \
+            'https://github.com/boostorg/boost/releases/download/boost-1.85.0/boost-1.85.0-cmake.tar.gz'
+
+          echo "=== All tarballs downloaded successfully ==="
 
       # ── 7. Patch uygula ───────────────────────────────────────────────────
       - name: Apply patches
