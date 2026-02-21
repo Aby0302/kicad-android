@@ -298,7 +298,8 @@ jobs:
           echo "CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}"
 
           chmod +x all.sh
-          ./all.sh
+          ./all.sh 2>&1 | tee /tmp/all-build.log
+          echo "=== Build exit code: $? ==="
         timeout-minutes: 300
 
       # ── 9. APK bul ve artifact olarak yükle ──────────────────────────────
@@ -308,11 +309,11 @@ jobs:
           echo "=== ALL APK/AAB FILES ==="
           find . \( -name "*.apk" -o -name "*.aab" \) 2>/dev/null || echo "NONE FOUND"
           echo ""
-          echo "=== app_* DIRECTORIES ==="
-          find . -maxdepth 5 -type d -name "app_*" 2>/dev/null || echo "NONE"
+          echo "=== kicadapp/ FULL STRUCTURE ==="
+          find kicadapp/ -type f 2>/dev/null | head -50 || echo "NONE"
           echo ""
-          echo "=== kicad/build STRUCTURE ==="
-          find kicad/build -maxdepth 4 -type d 2>/dev/null | head -30 || echo "NONE"
+          echo "=== app-build LAST 100 LINES ==="
+          grep -i "androiddeployqt\|error\|apk\|output\|Failed" /tmp/all-build.log 2>/dev/null | tail -100 || echo "NO LOG"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
