@@ -90,18 +90,46 @@ jobs:
 
       - name: Fetch tarballs
         run: |
-          mkdir -p OCCT     && curl -L -o - 'https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/V7_8_1.tar.gz' | tar -xz --strip-components=1 -C OCCT
-          mkdir -p libgit2  && curl -L -o - 'https://codeload.github.com/libgit2/libgit2/tar.gz/refs/tags/v1.8.0' | tar -xz --strip-components=1 -C libgit2
-          mkdir -p ngspice  && curl -L -o - 'https://altushost-swe.dl.sourceforge.net/project/ngspice/ng-spice-rework/42/ngspice-42.tar.gz' | tar -xz --strip-components=1 -C ngspice
-          mkdir -p cairo    && curl -L -o - 'https://gitlab.freedesktop.org/cairo/cairo/-/archive/02754405330989198548d1945b3c55566ba0c6b7/cairo-02754405330989198548d1945b3c55566ba0c6b7.tar.gz' | tar -xz --strip-components=1 -C cairo
-          mkdir -p unixODBC && curl -L -o - 'https://www.unixodbc.org/unixODBC-2.3.12.tar.gz' | tar -xz --strip-components=1 -C unixODBC
-          mkdir -p zstd     && curl -L -o - 'https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-1.5.6.tar.gz' | tar -xz --strip-components=1 -C zstd
-          mkdir -p protobuf && curl -L -o - 'https://github.com/protocolbuffers/protobuf/archive/refs/tags/v3.12.4.tar.gz' | tar -xz --strip-components=1 -C protobuf
-          mkdir -p python   && curl -L -o - 'https://www.python.org/ftp/python/3.13.0/Python-3.13.0rc1.tgz' | tar -xz --strip-components=1 -C python
-          mkdir -p openssl  && curl -L -o - 'https://github.com/openssl/openssl/releases/download/openssl-3.3.1/openssl-3.3.1.tar.gz' | tar -xz --strip-components=1 -C openssl
-          mkdir -p icu      && curl -L -o - 'https://github.com/unicode-org/icu/releases/download/release-73-2/icu4c-73_2-src.tgz' | tar -xz --strip-components=1 -C icu
-          mkdir -p pcre2    && curl -L -o - 'https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.44/pcre2-10.44.tar.gz' | tar -xz --strip-components=1 -C pcre2
-          mkdir -p boost    && curl -L -o - 'https://github.com/boostorg/boost/releases/download/boost-1.85.0/boost-1.85.0-cmake.tar.gz' | tar -xz --strip-components=1 -C boost
+          # Yardımcı: dosyaya indir, boyut kontrol et, sonra aç
+          fetch() {
+            local DIR="$1" URL="$2" TMP="/tmp/tb_$(basename $DIR).tar.gz"
+            mkdir -p "$DIR"
+            echo ">>> $DIR"
+            curl -fsSL --retry 3 --retry-delay 5 -L -o "$TMP" "$URL"
+            SIZE=$(stat -c%s "$TMP")
+            if [ "$SIZE" -lt 10240 ]; then
+              echo "ERROR: $DIR too small ($SIZE bytes) — likely HTML error page"
+              cat "$TMP"; exit 1
+            fi
+            tar -xz --strip-components=1 -C "$DIR" -f "$TMP"
+            rm -f "$TMP"
+            echo "<<< OK $DIR ($SIZE bytes)"
+          }
+
+          fetch OCCT     'https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/V7_8_1.tar.gz'
+          fetch libgit2  'https://codeload.github.com/libgit2/libgit2/tar.gz/refs/tags/v1.8.0'
+          fetch cairo    'https://gitlab.freedesktop.org/cairo/cairo/-/archive/02754405330989198548d1945b3c55566ba0c6b7/cairo-02754405330989198548d1945b3c55566ba0c6b7.tar.gz'
+          fetch zstd     'https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-1.5.6.tar.gz'
+          fetch protobuf 'https://github.com/protocolbuffers/protobuf/archive/refs/tags/v3.12.4.tar.gz'
+          fetch openssl  'https://github.com/openssl/openssl/releases/download/openssl-3.3.1/openssl-3.3.1.tar.gz'
+          fetch icu      'https://github.com/unicode-org/icu/releases/download/release-73-2/icu4c-73_2-src.tgz'
+          fetch pcre2    'https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.44/pcre2-10.44.tar.gz'
+          fetch boost    'https://github.com/boostorg/boost/releases/download/boost-1.85.0/boost-1.85.0-cmake.tar.gz'
+
+          # ngspice — SourceForge güvenilmez, GitHub mirror önce dene
+          fetch ngspice 'https://github.com/imr/ngspice/archive/refs/tags/ngspice-42.tar.gz' || \
+          fetch ngspice 'https://altushost-swe.dl.sourceforge.net/project/ngspice/ng-spice-rework/42/ngspice-42.tar.gz'
+
+          # unixODBC — FTP çalışmıyor, HTTP kullan
+          fetch unixODBC 'https://www.unixodbc.org/unixODBC-2.3.12.tar.gz' || \
+          fetch unixODBC 'http://www.unixodbc.org/unixODBC-2.3.12.tar.gz'
+
+          # python — .tgz uzantısı
+          mkdir -p python
+          curl -fsSL --retry 3 -L -o /tmp/python.tgz 'https://www.python.org/ftp/python/3.13.0/Python-3.13.0rc1.tgz'
+          tar -xz --strip-components=1 -C python -f /tmp/python.tgz
+          rm -f /tmp/python.tgz
+          echo "<<< OK python"
 
       # Boost-for-Android'ın beklediği boost_1_84_0.tar.bz2 (4 aşamalı fallback)
       - name: Prepare boost_1_84_0.tar.bz2 for Boost-for-Android
