@@ -43,10 +43,14 @@ jobs:
             git curl wget unzip \
             libgl1-mesa-dev libgles2-mesa-dev \
             libegl1-mesa-dev libx11-dev \
-            autoconf automake libtool
+            autoconf automake libtool \
+            protobuf-compiler libprotobuf-dev
 
           # Meson 1.3.0 — repo zorunluluğu
           pip3 install meson==1.3.0 --break-system-packages || pip3 install meson==1.3.0
+
+          # protoc version doğrula
+          protoc --version
 
       # ── 4. Android SDK ────────────────────────────────────────────────────
       - name: Setup Android SDK
