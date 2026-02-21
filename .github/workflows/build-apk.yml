@@ -1,190 +1,146 @@
-name: Build KiCad Android APK
+name: Android build
+run-name: Android build
 
 on:
-  workflow_dispatch:          # Manuel tetikleme (Actions sekmesinden "Run workflow")
+  workflow_dispatch:
   push:
     branches: [ actions ]
 
+env:
+  QT_VERSION: "6.6.2"
+
 jobs:
-  build:
+  build-android:
     runs-on: ubuntu-22.04
-    timeout-minutes: 360       # 6 saat — derleme uzun sürer
-
-    env:
-      ANDROID_NDK_VERSION: r25c
-      ANDROID_NDK_HASH: 53af80a1cce9144025b81eff3d33af2f
-      QT_VERSION: 6.6.2
-      BUILD_TOOLS_VERSION: 34.0.0
-      API_LEVEL: 28
-
     steps:
-      # ── 1. Repo klonla (submodule'lerle birlikte) ────────────────────────
-      - name: Checkout repository with submodules
+      - run: df -h /
+
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - run: sudo mkdir -m 777 /usr/local/lib/android
+
+      - run: df -h /
+
+      - name: Install meson
+        run: sudo pip3 install --upgrade meson
+
+      - name: Install apt packages
+        run: sudo apt-get install -y ninja-build protobuf-compiler
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android environment
+        uses: android-actions/setup-android@v3
+        with:
+          log-accepted-android-sdk-licenses: false
+
+      - name: Install Android SDK / NDK / tools
+        run: |
+          sdkmanager "platforms;android-34"
+          sdkmanager "ndk;25.2.9519653"
+          sdkmanager "build-tools;34.0.0"
+
+      - name: Install Qt (desktop)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{env.QT_VERSION}}
+          setup-python: false
+
+      - name: Install Qt (Android x86_64)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{env.QT_VERSION}}
+          host: 'linux'
+          target: 'android'
+          arch: 'android_x86_64'
+          setup-python: false
+
+      - name: Install Qt (Android armv8)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{env.QT_VERSION}}
+          host: 'linux'
+          target: 'android'
+          arch: 'android_arm64_v8a'
+          setup-python: false
+
+      - name: Setup env
+        run: |
+          echo "QT_HOST_PATH=/home/runner/work/${{ github.event.repository.name }}/Qt/${{env.QT_VERSION}}/gcc_64" >> $GITHUB_ENV
+          echo "QT_TARGET_BASE=/home/runner/work/${{ github.event.repository.name }}/Qt/${{env.QT_VERSION}}" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> $GITHUB_ENV
+
+      - name: Checkout repository (and submodules)
         uses: actions/checkout@v4
         with:
           ref: actions
           submodules: recursive
-          fetch-depth: 0
 
-      # ── 2. JDK 17 — sdkmanager için zorunlu ──────────────────────────────
-      - name: Setup JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      # ── 3. Sistem bağımlılıkları ─────────────────────────────────────────
-      - name: Install system dependencies
+      - name: Fetch tarballs
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y \
-            build-essential cmake ninja-build pkg-config \
-            python3 python3-pip \
-            git curl wget unzip \
-            libgl1-mesa-dev libgles2-mesa-dev \
-            libegl1-mesa-dev libx11-dev \
-            autoconf automake libtool \
-            protobuf-compiler libprotobuf-dev
+          mkdir -p OCCT     && curl -L -o - 'https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/V7_8_1.tar.gz' | tar -xz --strip-components=1 -C OCCT
+          mkdir -p libgit2  && curl -L -o - 'https://codeload.github.com/libgit2/libgit2/tar.gz/refs/tags/v1.8.0' | tar -xz --strip-components=1 -C libgit2
+          mkdir -p ngspice  && curl -L -o - 'https://altushost-swe.dl.sourceforge.net/project/ngspice/ng-spice-rework/42/ngspice-42.tar.gz' | tar -xz --strip-components=1 -C ngspice
+          mkdir -p cairo    && curl -L -o - 'https://gitlab.freedesktop.org/cairo/cairo/-/archive/02754405330989198548d1945b3c55566ba0c6b7/cairo-02754405330989198548d1945b3c55566ba0c6b7.tar.gz' | tar -xz --strip-components=1 -C cairo
+          mkdir -p unixODBC && curl -L -o - 'https://www.unixodbc.org/unixODBC-2.3.12.tar.gz' | tar -xz --strip-components=1 -C unixODBC
+          mkdir -p zstd     && curl -L -o - 'https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-1.5.6.tar.gz' | tar -xz --strip-components=1 -C zstd
+          mkdir -p protobuf && curl -L -o - 'https://github.com/protocolbuffers/protobuf/archive/refs/tags/v3.12.4.tar.gz' | tar -xz --strip-components=1 -C protobuf
+          mkdir -p python   && curl -L -o - 'https://www.python.org/ftp/python/3.13.0/Python-3.13.0rc1.tgz' | tar -xz --strip-components=1 -C python
+          mkdir -p openssl  && curl -L -o - 'https://github.com/openssl/openssl/releases/download/openssl-3.3.1/openssl-3.3.1.tar.gz' | tar -xz --strip-components=1 -C openssl
+          mkdir -p icu      && curl -L -o - 'https://github.com/unicode-org/icu/releases/download/release-73-2/icu4c-73_2-src.tgz' | tar -xz --strip-components=1 -C icu
+          mkdir -p pcre2    && curl -L -o - 'https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.44/pcre2-10.44.tar.gz' | tar -xz --strip-components=1 -C pcre2
+          mkdir -p boost    && curl -L -o - 'https://github.com/boostorg/boost/releases/download/boost-1.85.0/boost-1.85.0-cmake.tar.gz' | tar -xz --strip-components=1 -C boost
 
-          # Meson 1.3.0 — repo zorunluluğu
-          pip3 install meson==1.3.0 --break-system-packages || pip3 install meson==1.3.0
-
-          # protoc version doğrula
-          protoc --version
-
-      # ── 4. Android SDK ────────────────────────────────────────────────────
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android build tools & platform
+      # Boost-for-Android'ın beklediği boost_1_84_0.tar.bz2 (4 aşamalı fallback)
+      - name: Prepare boost_1_84_0.tar.bz2 for Boost-for-Android
         run: |
-          sdkmanager --install \
-            "platforms;android-${API_LEVEL}" \
-            "build-tools;${BUILD_TOOLS_VERSION}" \
-            "platform-tools"
+          BOOST_FILE="${GITHUB_WORKSPACE}/Boost-for-Android/boost_1_84_0.tar.bz2"
+          MIN_SIZE=50000000
 
-      # ── 5. Android NDK r25c ───────────────────────────────────────────────
-      - name: Download Android NDK r25c
-        run: |
-          wget -q "https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_VERSION}-linux.zip" \
-            -O /tmp/ndk.zip
-          unzip -q /tmp/ndk.zip -d $HOME
-          echo "ANDROID_NDK_ROOT=$HOME/android-ndk-${ANDROID_NDK_VERSION}" >> $GITHUB_ENV
-          echo "NDK_ROOT=$HOME/android-ndk-${ANDROID_NDK_VERSION}" >> $GITHUB_ENV
+          echo "==> Attempt 1: GitHub Releases"
+          curl -fsSL -L --retry 3 -o "${BOOST_FILE}" \
+            "https://github.com/boostorg/boost/releases/download/boost-1.84.0/boost_1_84_0.tar.bz2" \
+            && SIZE=$(stat -c%s "${BOOST_FILE}") || SIZE=0
 
-      # ── 5. Qt 6.6.2 (aqt ile) ────────────────────────────────────────────
-      - name: Install aqt (Qt installer)
-        run: pip3 install aqtinstall --break-system-packages || pip3 install aqtinstall
+          if [ "${SIZE:-0}" -lt "$MIN_SIZE" ]; then
+            echo "==> Attempt 2: archives.boost.io"
+            curl -fsSL -L --retry 3 -o "${BOOST_FILE}" \
+              "https://archives.boost.io/release/1.84.0/source/boost_1_84_0.tar.bz2" \
+              && SIZE=$(stat -c%s "${BOOST_FILE}") || SIZE=0
+          fi
 
-      - name: Cache Qt Desktop
-        id: cache-qt-desktop
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/Qt/desktop
-          key: qt-desktop-${{ env.QT_VERSION }}-ubuntu22
+          if [ "${SIZE:-0}" -lt "$MIN_SIZE" ]; then
+            echo "==> Attempt 3: JFrog Artifactory"
+            curl -fsSL -L --retry 3 -o "${BOOST_FILE}" \
+              "https://boostorg.jfrog.io/artifactory/main/release/1.84.0/source/boost_1_84_0.tar.bz2" \
+              && SIZE=$(stat -c%s "${BOOST_FILE}") || SIZE=0
+          fi
 
-      - name: Install Qt Desktop
-        if: steps.cache-qt-desktop.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p ${{ github.workspace }}/Qt/desktop
-          aqt install-qt linux desktop ${QT_VERSION} gcc_64 \
-            -O ${{ github.workspace }}/Qt/desktop
+          if [ "${SIZE:-0}" -lt "$MIN_SIZE" ]; then
+            echo "==> Attempt 4: git clone fallback"
+            git clone --recurse-submodules --depth=1 \
+              --branch boost-1.84.0 \
+              https://github.com/boostorg/boost.git /tmp/boost_1_84_0
+            cd /tmp && tar cjf "${BOOST_FILE}" boost_1_84_0/
+            rm -rf /tmp/boost_1_84_0
+          fi
 
-      - name: Cache Qt Android
-        id: cache-qt-android
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/Qt/android
-          key: qt-android-${{ env.QT_VERSION }}-arm64-x86_64
+          SIZE=$(stat -c%s "${BOOST_FILE}")
+          echo "Final boost tarball size: ${SIZE} bytes"
+          [ "$SIZE" -ge "$MIN_SIZE" ] || { echo "ERROR: All boost attempts failed!"; exit 1; }
 
-      - name: Install Qt Android (arm64-v8a + x86_64)
-        if: steps.cache-qt-android.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p ${{ github.workspace }}/Qt/android
-          aqt install-qt linux android ${QT_VERSION} android_arm64_v8a \
-            -O ${{ github.workspace }}/Qt/android
-          aqt install-qt linux android ${QT_VERSION} android_x86_64 \
-            -O ${{ github.workspace }}/Qt/android
-
-      - name: Set Qt paths
-        run: |
-          echo "QT_HOST_PATH=${{ github.workspace }}/Qt/desktop/${QT_VERSION}/gcc_64" >> $GITHUB_ENV
-          echo "QT_TARGET_BASE=${{ github.workspace }}/Qt/android/${QT_VERSION}" >> $GITHUB_ENV
-
-      # ── 6. Kaynak tarballs indir ──────────────────────────────────────────
-      - name: Download source tarballs
-        run: |
-          # Yardımcı fonksiyon: önce dosyaya indir, sonra çıkart (pipe'dan daha güvenilir)
-          dl() {
-            local DIR="$1" URL="$2" OUT="/tmp/$(basename $DIR).tar.gz"
-            mkdir -p "$DIR"
-            echo ">>> Downloading $DIR from $URL"
-            curl -fsSL --retry 3 --retry-delay 5 -o "$OUT" "$URL"
-            # Boyut kontrolü: 10KB'dan küçükse hata
-            local SIZE=$(stat -c%s "$OUT")
-            if [ "$SIZE" -lt 10240 ]; then
-              echo "ERROR: $DIR archive too small ($SIZE bytes) - probably an error page!"
-              cat "$OUT"
-              exit 1
-            fi
-            tar -xz --strip-components=1 -C "$DIR" -f "$OUT"
-            rm -f "$OUT"
-            echo "<<< OK: $DIR"
-          }
-
-          dl OCCT \
-            'https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/V7_8_1.tar.gz'
-
-          dl libgit2 \
-            'https://github.com/libgit2/libgit2/archive/refs/tags/v1.8.0.tar.gz'
-
-          # ngspice — SourceForge güvenilmez, GitHub mirror kullan
-          dl ngspice \
-            'https://github.com/imr/ngspice/archive/refs/tags/ngspice-42.tar.gz' || \
-          dl ngspice \
-            'https://sourceforge.net/projects/ngspice/files/ng-spice-rework/42/ngspice-42.tar.gz/download'
-
-          dl cairo \
-            'https://gitlab.freedesktop.org/cairo/cairo/-/archive/02754405330989198548d1945b3c55566ba0c6b7/cairo-02754405330989198548d1945b3c55566ba0c6b7.tar.gz'
-
-          # unixODBC — FTP yerine HTTP mirror
-          dl unixODBC \
-            'https://www.unixodbc.org/unixODBC-2.3.12.tar.gz' || \
-          dl unixODBC \
-            'http://www.unixodbc.org/unixODBC-2.3.12.tar.gz'
-
-          dl zstd \
-            'https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-1.5.6.tar.gz'
-
-          dl protobuf \
-            'https://github.com/protocolbuffers/protobuf/archive/refs/tags/v3.12.4.tar.gz'
-
-          # Python — .tgz uzantısı, çıkart parametresi aynı
-          mkdir -p python
-          curl -fsSL --retry 3 -o /tmp/python.tgz \
-            'https://www.python.org/ftp/python/3.13.0/Python-3.13.0rc1.tgz'
-          tar -xz --strip-components=1 -C python -f /tmp/python.tgz
-          rm -f /tmp/python.tgz
-
-          dl openssl \
-            'https://github.com/openssl/openssl/releases/download/openssl-3.3.1/openssl-3.3.1.tar.gz'
-
-          # ICU — .tgz uzantısı
-          mkdir -p icu
-          curl -fsSL --retry 3 -o /tmp/icu.tgz \
-            'https://github.com/unicode-org/icu/releases/download/release-73-2/icu4c-73_2-src.tgz'
-          tar -xz --strip-components=1 -C icu -f /tmp/icu.tgz
-          rm -f /tmp/icu.tgz
-
-          dl pcre2 \
-            'https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.44/pcre2-10.44.tar.gz'
-
-          dl boost \
-            'https://github.com/boostorg/boost/releases/download/boost-1.85.0/boost-1.85.0-cmake.tar.gz'
-
-          echo "=== All tarballs downloaded successfully ==="
-
-      # ── 7. Patch uygula ───────────────────────────────────────────────────
       - name: Apply patches
         run: |
           cp _glu_meson.build glu/meson.build
@@ -192,138 +148,22 @@ jobs:
           cp _ngspice_configure.ac ngspice/configure.ac
           cp _icu_mh-linux icu/source/config/mh-linux
 
-      # ── 7b. Boost-for-Android'ın beklediği boost_1_84_0.tar.bz2'yi hazırla ──
-      # SourceForge/mirror'lar GitHub Actions'dan HTML hata sayfası döndürüyor.
-      # Çözüm: boost'u GitHub'dan klonla ve tarball oluştur (github.com her zaman erişilebilir).
-      - name: Prepare boost_1_84_0.tar.bz2 for Boost-for-Android
-        run: |
-          BOOST_FILE="${GITHUB_WORKSPACE}/Boost-for-Android/boost_1_84_0.tar.bz2"
-          MIN_SIZE=50000000   # 50 MB — gerçek tarball en az bu kadar
+      - run: df -h /
 
-          # 1. Deneme: GitHub Releases doğrudan bağlantı
-          echo "==> Attempt 1: GitHub Releases"
-          curl -fsSL -L --retry 3 --retry-delay 5 \
-            -o "${BOOST_FILE}" \
-            "https://github.com/boostorg/boost/releases/download/boost-1.84.0/boost_1_84_0.tar.bz2" \
-            && SIZE=$(stat -c%s "${BOOST_FILE}") && echo "Size: $SIZE" \
-            || SIZE=0
+      - name: Build Application
+        run: ./all.sh
 
-          # 2. Deneme: archives.boost.io (redirektsiz CDN)
-          if [ "${SIZE:-0}" -lt "$MIN_SIZE" ]; then
-            echo "==> Attempt 2: archives.boost.io"
-            curl -fsSL -L --retry 3 --retry-delay 5 \
-              -o "${BOOST_FILE}" \
-              "https://archives.boost.io/release/1.84.0/source/boost_1_84_0.tar.bz2" \
-              && SIZE=$(stat -c%s "${BOOST_FILE}") && echo "Size: $SIZE" \
-              || SIZE=0
-          fi
+      - run: df -h /
+        if: success() || failure()
 
-          # 3. Deneme: boostorg JFrog Artifactory
-          if [ "${SIZE:-0}" -lt "$MIN_SIZE" ]; then
-            echo "==> Attempt 3: JFrog Artifactory"
-            curl -fsSL -L --retry 3 --retry-delay 5 \
-              -o "${BOOST_FILE}" \
-              "https://boostorg.jfrog.io/artifactory/main/release/1.84.0/source/boost_1_84_0.tar.bz2" \
-              && SIZE=$(stat -c%s "${BOOST_FILE}") && echo "Size: $SIZE" \
-              || SIZE=0
-          fi
-
-          # 4. Son çare: GitHub'dan git clone + tarball oluştur
-          # (Tüm mirror'lar başarısız olursa bu kesinlikle çalışır)
-          if [ "${SIZE:-0}" -lt "$MIN_SIZE" ]; then
-            echo "==> Attempt 4: git clone from GitHub (fallback)"
-            git clone --recurse-submodules --depth=1 \
-              --branch boost-1.84.0 \
-              https://github.com/boostorg/boost.git \
-              /tmp/boost_1_84_0
-            echo "Packing tarball..."
-            cd /tmp
-            tar cjf "${BOOST_FILE}" boost_1_84_0/
-            rm -rf /tmp/boost_1_84_0
-            SIZE=$(stat -c%s "${BOOST_FILE}")
-            echo "Size after packing: $SIZE"
-          fi
-
-          # Final kontrol
-          SIZE=$(stat -c%s "${BOOST_FILE}")
-          echo "Final boost tarball size: $SIZE bytes"
-          if [ "$SIZE" -lt "$MIN_SIZE" ]; then
-            echo "ERROR: All boost download attempts failed! ($SIZE bytes)"
-            exit 1
-          fi
-          echo "=== Boost tarball ready ==="
-
-      # ── 8. Qt path doğrulama ──────────────────────────────────────────────
-      - name: Verify Qt installation paths
-        run: |
-          echo "=== QT_HOST_PATH ==="
-          ls "${QT_HOST_PATH}/lib/cmake/Qt6/" 2>/dev/null | head -5 || echo "NOT FOUND: ${QT_HOST_PATH}/lib/cmake/Qt6/"
-
-          echo "=== QT_TARGET_BASE content ==="
-          ls "${QT_TARGET_BASE}/" 2>/dev/null || echo "NOT FOUND: ${QT_TARGET_BASE}"
-
-          # aqt'nin oluşturduğu gerçek arch klasörünü bul
-          QT_ANDROID_ARCH_DIR=$(find "${QT_TARGET_BASE}" -maxdepth 2 -name "Qt6Config.cmake" 2>/dev/null | head -1 | sed 's|/lib/cmake.*||')
-          echo "Found Qt6Config.cmake in: ${QT_ANDROID_ARCH_DIR}"
-
-          # Doğru path'i GITHUB_ENV'e kaydet
-          if [ -n "${QT_ANDROID_ARCH_DIR}" ]; then
-            echo "QT_ANDROID_ARCH_DIR=${QT_ANDROID_ARCH_DIR}" >> $GITHUB_ENV
-            echo "Qt6_DIR=${QT_ANDROID_ARCH_DIR}/lib/cmake/Qt6" >> $GITHUB_ENV
-          else
-            # Fallback: standart aqt path
-            FALLBACK="${QT_TARGET_BASE}/android_arm64_v8a"
-            echo "QT_ANDROID_ARCH_DIR=${FALLBACK}" >> $GITHUB_ENV
-            echo "Qt6_DIR=${FALLBACK}/lib/cmake/Qt6" >> $GITHUB_ENV
-            echo "WARNING: Qt6Config.cmake not found, using fallback: ${FALLBACK}"
-          fi
-
-      # ── 9. Build! ─────────────────────────────────────────────────────────
-      - name: Build KiCad for Android
-        run: |
-          export QT_HOST_PATH="${QT_HOST_PATH}"
-          export QT_TARGET_BASE="${QT_TARGET_BASE}"
-          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT}"
-          export ANDROID_NDK_ROOT="${ANDROID_NDK_ROOT}"
-
-          # Qt6'nın CMAKE_PREFIX_PATH'e dahil edilmesi — her iki mimari için
-          export Qt6_DIR="${QT_TARGET_BASE}/android_arm64_v8a/lib/cmake/Qt6"
-          QT_X86_DIR="${QT_TARGET_BASE}/android_x86_64"
-          export CMAKE_PREFIX_PATH="${QT_ANDROID_ARCH_DIR}:${QT_X86_DIR}:${QT_TARGET_BASE}/android_arm64_v8a:${QT_HOST_PATH}:${CMAKE_PREFIX_PATH}"
-          export Qt6CoreTools_DIR="${QT_HOST_PATH}/lib/cmake/Qt6CoreTools"
-          export Qt6GuiTools_DIR="${QT_HOST_PATH}/lib/cmake/Qt6GuiTools"
-          export Qt6WidgetsTools_DIR="${QT_HOST_PATH}/lib/cmake/Qt6WidgetsTools"
-
-          echo "Qt6_DIR=${Qt6_DIR}"
-          echo "CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}"
-
-          chmod +x all.sh
-          ./all.sh 2>&1 | tee /tmp/all-build.log
-          echo "=== Build exit code: $? ==="
-        timeout-minutes: 300
-
-      # ── 9. APK bul ve artifact olarak yükle ──────────────────────────────
-      - name: Find APK files (debug)
-        if: always()
-        run: |
-          echo "=== ALL APK/AAB FILES ==="
-          find . \( -name "*.apk" -o -name "*.aab" \) 2>/dev/null || echo "NONE FOUND"
-          echo ""
-          echo "=== kicadapp/ FULL STRUCTURE ==="
-          find kicadapp/ -type f 2>/dev/null | head -50 || echo "NONE"
-          echo ""
-          echo "=== app-build LAST 100 LINES ==="
-          grep -i "androiddeployqt\|error\|apk\|output\|Failed" /tmp/all-build.log 2>/dev/null | tail -100 || echo "NO LOG"
-
-      - name: Upload APK artifact
+      - name: Upload App arm64-v8a
         uses: actions/upload-artifact@v4
         with:
-          name: kicad-android-apk
-          path: |
-            kicadapp/app_arm64-v8a/build/outputs/apk/**/*.apk
-            kicadapp/app_x86_64/build/outputs/apk/**/*.apk
-            kicadapp/app_arm64-v8a/build/outputs/bundle/**/*.aab
-            kicadapp/**/build/outputs/**/*.apk
-            kicadapp/**/build/outputs/**/*.aab
-          retention-days: 30
-          if-no-files-found: warn
+          name: kicad_arm64-v8a
+          path: kicadapp/app_arm64-v8a/build/outputs/apk/debug/app_arm64-v8a-debug.apk
+
+      - name: Upload App x86_64
+        uses: actions/upload-artifact@v4
+        with:
+          name: kicad_x86_64
+          path: kicadapp/app_x86_64/build/outputs/apk/debug/app_x86_64-debug.apk
