@@ -319,12 +319,10 @@ jobs:
         with:
           name: kicad-android-apk
           path: |
-            app_arm64-v8a/build/outputs/apk/**/*.apk
-            app_x86_64/build/outputs/apk/**/*.apk
-            app_arm64-v8a/build/outputs/bundle/**/*.aab
-            kicad/build/android/build/outputs/apk/**/*.apk
-            **/build/outputs/apk/**/*.apk
-            **/*.apk
-            **/*.aab
+            kicadapp/app_arm64-v8a/build/outputs/apk/**/*.apk
+            kicadapp/app_x86_64/build/outputs/apk/**/*.apk
+            kicadapp/app_arm64-v8a/build/outputs/bundle/**/*.aab
+            kicadapp/**/build/outputs/**/*.apk
+            kicadapp/**/build/outputs/**/*.aab
           retention-days: 30
           if-no-files-found: warn
