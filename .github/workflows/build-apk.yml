@@ -1,14 +1,14 @@
 name: Build KiCad Android APK
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:          # Manuel tetikleme (Actions sekmesinden "Run workflow")
   push:
     branches: [ actions ]
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 360
+    timeout-minutes: 360       # 6 saat — derleme uzun sürer
 
     env:
       ANDROID_NDK_VERSION: r25c
@@ -43,8 +43,7 @@ jobs:
             git curl wget unzip \
             libgl1-mesa-dev libgles2-mesa-dev \
             libegl1-mesa-dev libx11-dev \
-            autoconf automake libtool \
-            protobuf-compiler
+            autoconf automake libtool
 
           # Meson 1.3.0 — repo zorunluluğu
           pip3 install meson==1.3.0 --break-system-packages || pip3 install meson==1.3.0
@@ -190,6 +189,8 @@ jobs:
           cp _icu_mh-linux icu/source/config/mh-linux
 
       # ── 7b. Boost-for-Android'ın beklediği boost_1_84_0.tar.bz2'yi hazırla ──
+      # SourceForge/mirror'lar GitHub Actions'dan HTML hata sayfası döndürüyor.
+      # Çözüm: boost'u GitHub'dan klonla ve tarball oluştur (github.com her zaman erişilebilir).
       - name: Prepare boost_1_84_0.tar.bz2 for Boost-for-Android
         run: |
           BOOST_FILE="${GITHUB_WORKSPACE}/Boost-for-Android/boost_1_84_0.tar.bz2"
@@ -224,6 +225,7 @@ jobs:
           fi
 
           # 4. Son çare: GitHub'dan git clone + tarball oluştur
+          # (Tüm mirror'lar başarısız olursa bu kesinlikle çalışır)
           if [ "${SIZE:-0}" -lt "$MIN_SIZE" ]; then
             echo "==> Attempt 4: git clone from GitHub (fallback)"
             git clone --recurse-submodules --depth=1 \
@@ -295,17 +297,29 @@ jobs:
           ./all.sh
         timeout-minutes: 300
 
-      # ── 10. APK bul ve artifact olarak yükle ─────────────────────────────
-      - name: Find APK files
+      # ── 9. APK bul ve artifact olarak yükle ──────────────────────────────
+      - name: Find APK files (debug)
+        if: always()
         run: |
-          find . -name "*.apk" 2>/dev/null
-          find . -name "*.aab" 2>/dev/null
+          echo "=== ALL APK/AAB FILES ==="
+          find . \( -name "*.apk" -o -name "*.aab" \) 2>/dev/null || echo "NONE FOUND"
+          echo ""
+          echo "=== app_* DIRECTORIES ==="
+          find . -maxdepth 5 -type d -name "app_*" 2>/dev/null || echo "NONE"
+          echo ""
+          echo "=== kicad/build STRUCTURE ==="
+          find kicad/build -maxdepth 4 -type d 2>/dev/null | head -30 || echo "NONE"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: kicad-android-apk
           path: |
+            app_arm64-v8a/build/outputs/apk/**/*.apk
+            app_x86_64/build/outputs/apk/**/*.apk
+            app_arm64-v8a/build/outputs/bundle/**/*.aab
+            kicad/build/android/build/outputs/apk/**/*.apk
+            **/build/outputs/apk/**/*.apk
             **/*.apk
             **/*.aab
           retention-days: 30
